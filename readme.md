@@ -14,9 +14,9 @@ Step 1 - Initial Profiling
 Step 2 - Cleaning
 
 The goal of the cleaning is to:
-1) Keep only the relevant columns
-2) Remove invalid zipcodes such as 0 and 99999 from the income file
-3) Remove entries that are not from the year 2018 from the real_estate file
+- Keep only the relevant columns
+- Remove invalid zipcodes such as 0 and 99999 from the income file
+- Remove entries that are not from the year 2018 from the real_estate file
 
 1) Once the MapReduce files have been transferred, compile them like this:
 javac -classpath `yarn classpath` -d . Clean.java CleanMapper.java CleanReducer.java
