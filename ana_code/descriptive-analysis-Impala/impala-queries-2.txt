@@ -1,0 +1,30 @@
+-- Let's take a closer look at California - what are the most difficult to live in zipcodes in CA?
+-- Zipcode range 90001 to 96162
+
+WITH income AS (
+	
+	SELECT zipcode, state, sum(total_income*1000)/sum(n1) as avg_income from income_clean GROUP BY zipcode, state
+),
+
+real_estate AS (
+
+	SELECT zipcode, avg(median_listing_price) as avg_median_listing_price from real_estate_clean GROUP BY zipcode
+)
+
+SELECT income.zipcode, income.state, income.avg_income, real_estate.avg_median_listing_price, income.avg_income - real_estate.avg_median_listing_price as diff from income JOIN real_estate ON income.zipcode = real_estate.zipcode WHERE income.zipcode BETWEEN 90001 AND 96162 ORDER BY diff LIMIT 10;
+
+
+-- If you were to save all of your money after tax, how long would it take you to buy a home in different zipcodes in CA?
+
+WITH income AS (
+	
+	SELECT zipcode, state, (sum(total_income)-sum(state_and_local))*1000/sum(n1) as post_tax_income from income_clean GROUP BY zipcode, state
+),
+
+real_estate AS (
+
+	SELECT zipcode, avg(median_listing_price) as avg_median_listing_price from real_estate_clean GROUP BY zipcode
+)
+
+SELECT income.zipcode, income.state, income.post_tax_income, real_estate.avg_median_listing_price, income.post_tax_income - real_estate.avg_median_listing_price, real_estate.avg_median_listing_price/income.post_tax_income as years from income JOIN real_estate ON income.zipcode = real_estate.zipcode WHERE income.zipcode BETWEEN 90001 AND 96162 ORDER BY years DESC LIMIT 10;
+

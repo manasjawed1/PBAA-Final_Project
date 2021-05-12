@@ -1,0 +1,97 @@
+-- CA zipcode range 90001 to 96162
+-- Where in CA do the most number of people in the highest income bracket live?
+WITH ca AS(
+
+	SELECT * from income_clean WHERE zipcode BETWEEN 90001 and 96162
+)
+
+SELECT * FROM ca WHERE agi_stub = 6 ORDER BY n1 DESC LIMIT 5;
+
+
+-- Where in CA do the most number of people in the lowest income bracket live?
+
+WITH ca AS(
+
+	SELECT * from income_clean WHERE zipcode BETWEEN 90001 and 96162
+)
+
+SELECT * FROM ca WHERE agi_stub = 1 ORDER BY n1 DESC LIMIT 5;
+
+-- Which zipcodes in CA have the highest percentage of lowest income bracket people?
+WITH ca AS(
+
+	SELECT * from income_clean WHERE zipcode BETWEEN 90001 and 96162
+),
+zip_and_total_n1 AS (
+
+	SELECT zipcode, sum(n1) AS total_n1 FROM ca GROUP BY zipcode
+
+)
+
+SELECT ca.zipcode, ca.n1, ca.agi_stub, (ca.n1/zt.total_n1)*100 as percentage FROM ca JOIN zip_and_total_n1 AS zt ON ca.zipcode = zt.zipcode WHERE ca.agi_stub = 1 ORDER BY percentage DESC LIMIT 5;
+
+
+-- which zipcode in CA have the highest disparity?
+WITH ca AS(
+
+	SELECT * from income_clean WHERE zipcode BETWEEN 90001 and 96162
+),
+zip_and_total_n1 AS (
+
+	SELECT zipcode, sum(n1) AS total_n1 FROM ca GROUP BY zipcode
+
+),
+
+low_income AS (
+	SELECT ca.zipcode, ca.n1, ca.agi_stub, (ca.n1/zt.total_n1)*100 as percentage_low FROM ca JOIN zip_and_total_n1 AS zt ON ca.zipcode = zt.zipcode WHERE ca.agi_stub = 1
+),
+
+high_income AS (
+	SELECT ca.zipcode, ca.n1, ca.agi_stub, (ca.n1/zt.total_n1)*100 as percentage_high FROM ca JOIN zip_and_total_n1 AS zt ON ca.zipcode = zt.zipcode WHERE ca.agi_stub = 6
+)
+
+SELECT l.zipcode, l.n1*100/l.percentage_low as total_n1, l.percentage_low, h.percentage_high, h.percentage_high - l.percentage_low AS diff FROM low_income AS l JOIN high_income AS h ON l.zipcode = h.zipcode ORDER BY diff DESC LIMIT 10;
+
+
+
+
+
+-- which zipcode in CA have the highest disparity? How do they connect with real_estate data?
+WITH ca AS(
+
+	SELECT * from income_clean WHERE zipcode BETWEEN 90001 and 96162
+),
+zip_and_total_n1 AS (
+
+	SELECT zipcode, sum(n1) AS total_n1 FROM ca GROUP BY zipcode
+
+),
+
+low_income AS (
+	SELECT ca.zipcode, ca.n1, ca.agi_stub, (ca.n1/zt.total_n1)*100 as percentage_low FROM ca JOIN zip_and_total_n1 AS zt ON ca.zipcode = zt.zipcode WHERE ca.agi_stub = 1
+),
+
+high_income AS (
+	SELECT ca.zipcode, ca.n1, ca.agi_stub, (ca.n1/zt.total_n1)*100 as percentage_high FROM ca JOIN zip_and_total_n1 AS zt ON ca.zipcode = zt.zipcode WHERE ca.agi_stub = 6
+),
+
+big_disparity AS(
+	SELECT l.zipcode, l.n1*100/l.percentage_low as total_n1, l.percentage_low, h.percentage_high, h.percentage_high - l.percentage_low AS diff FROM low_income AS l JOIN high_income AS h ON l.zipcode = h.zipcode
+),
+
+real_agg AS (
+
+	SELECT zipcode, avg(median_listing_price) as med, avg(active_listing_count) as act, avg(median_per_sq_ft) as med_sq, avg(avg_listing_price) avg_l from real_estate_clean GROUP BY zipcode 
+
+)
+
+SELECT b.zipcode, b.total_n1, b.percentage_low, b.percentage_high, b.diff, r.med, r.act, r.med_sq, r.avg_l FROM big_disparity as b JOIN real_agg AS r on b.zipcode = r.zipcode ORDER BY b.percentage_high DESC LIMIT 10;
+
+
+
+
+
+
+
+
+

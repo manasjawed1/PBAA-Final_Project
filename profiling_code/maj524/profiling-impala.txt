@@ -1,0 +1,22 @@
+
+-- For real_estate_clean
+DESCRIBE real_estate_clean;
+
+SELECT MIN(date_col), MAX(date_col) from real_estate_clean;
+
+select min(median_listing_price), max(median_listing_price), min(active_listing_count), max(active_listing_count) from real_estate_clean;
+
+select min(median_per_sq_ft), max(median_per_sq_ft), min(median_sq_ft), max(median_sq_ft) from real_estate_clean;
+
+select min(avg_listing_price), max(avg_listing_price), min(total_listing_count), max(total_listing_count) from real_estate_clean;
+
+-- For income_clean
+DESCRIBE income_clean;
+
+SELECT MIN(agi_stub), MAX(agi_stub), MIN(n1), MAX(n1) FROM income_clean;
+
+SELECT MIN(total_income), MAX(total_income), MIN(state_and_local), MAX(state_and_local) FROM income_clean;
+
+SELECT MIN(real_estate), MAX(real_estate), MIN(num_paid), MAX(num_paid) FROM income_clean;
+
+SELECT MIN(paid_amount), MAX(paid_amount), MIN(taxable_amount), MAX(taxable_amount) FROM income_clean;

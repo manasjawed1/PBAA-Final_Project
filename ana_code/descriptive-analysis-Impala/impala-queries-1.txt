@@ -1,0 +1,148 @@
+1) Connect to impala
+impala-shell
+connect hc07.nyu.cluster;
+use maj524;
+
+2) Load tables
+DROP table if exists income_clean;
+create table income_clean (zipcode INT, state STRING, agi_stub INT, n1 FLOAT, total_income FLOAT, state_and_local FLOAT, real_estate FLOAT, num_paid FLOAT, paid_amount FLOAT, taxable_amount STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE;
+
+load data inpath 'hdfs://horton.hpc.nyu.edu:8020/user/maj524/final-Impala/income_cleaned.csv' overwrite into table income_clean; 
+
+DROP table if exists real_estate_clean;
+
+create table real_estate_clean (date_col INT, zipcode INT, median_listing_price FLOAT, active_listing_count FLOAT, median_per_sq_ft FLOAT, median_sq_ft STRING, avg_listing_price FLOAT, total_listing_count STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE;
+
+load data inpath 'hdfs://horton.hpc.nyu.edu:8020/user/maj524/final-Impala/real_cleaned.csv' overwrite into table real_estate_clean; 
+
+
+--- Analysis Part
+
+-- General 
+SELECT i.zipcode, i.state, i.agi_stub, i.total_income, r.active_listing_count, r.avg_listing_price FROM income_clean as i JOIN real_estate_clean as r ON r.zipcode = r.zipcode LIMIT 5;
+
+-- Find zipcodes for NY
+SELECT DISTINCT zipcode from income_clean WHERE state = "NY" LIMIT 10;
+
+-- Find prices for NY zipcodes
+WITH ny AS (
+
+	SELECT DISTINCT zipcode from income_clean WHERE state = "NY" 
+
+)
+
+SELECT ny.zipcode, r.active_listing_count, r.avg_listing_price FROM ny JOIN real_estate_clean as r on ny.zipcode = r.zipcode LIMIT 10;
+
+-- Which state is the most expensive?
+SELECT i.state, avg(r.avg_listing_price) as avg_state_price from income_clean as i JOIN real_estate_clean as r ON i.zipcode = r.zipcode GROUP BY i.state ORDER BY avg_state_price DESC LIMIT 5;
+
+6) Think about the findings
+As we can see, there is a field called agi_stub in the income table that breaks down the data by income bracket. We can remove this by aggregating:
+
+-- Aggregate everything by zipcode
+SELECT zipcode sum(n1),  avg(agi_stub), sum(total_income) as total_income, sum (state_and_local), sum(real_estate), sum(num_paid), sum(paid_amount) from income_clean GROUP BY zipcode ORDER BY total_income DESC LIMIT 10;
+
+-- Add State
+SELECT zipcode, state, sum(n1),  avg(agi_stub), sum(total_income) as total_income, sum (state_and_local), sum(real_estate), sum(num_paid), sum(paid_amount) from income_clean GROUP BY zipcode, state ORDER BY total_income DESC LIMIT 10;
+
+-- Let's look at the real_estate data again:
+SELECT zipcode, avg(median_listing_price), avg(active_listing_count), avg(median_per_sq_ft), avg(avg_listing_price) from real_estate_clean GROUP BY zipcode ORDER BY avg(median_listing_price) DESC LIMIT 5;
+
+Our overall goal is to see if income tax by zipcode and property prices by zipcode match up
+
+-- Preregression analysis 1 - Zipcodes that have the biggest difference in avg income and median listing price
+WITH income AS (
+	
+	SELECT zipcode, state, sum(total_income*1000)/sum(n1) as avg_income from income_clean GROUP BY zipcode, state
+),
+
+real_estate AS (
+
+	SELECT zipcode, avg(median_listing_price) as avg_median_listing_price from real_estate_clean GROUP BY zipcode
+)
+
+SELECT income.zipcode, income.state, income.avg_income, real_estate.avg_median_listing_price, income.avg_income - real_estate.avg_median_listing_price as diff from income JOIN real_estate ON income.zipcode = real_estate.zipcode ORDER BY diff LIMIT 10;
+
+-- Preregression analysis 2 - zipcodes that have the biggest difference in income after tax and median listing price
+WITH income AS (
+	
+	SELECT zipcode, state, (sum(total_income)-sum(state_and_local) - sum(real_estate))*1000/sum(n1) as post_tax_income from income_clean GROUP BY zipcode, state
+),
+
+real_estate AS (
+
+	SELECT zipcode, avg(median_listing_price) as avg_median_listing_price from real_estate_clean GROUP BY zipcode
+)
+
+SELECT income.zipcode, income.state, income.post_tax_income, real_estate.avg_median_listing_price, income.post_tax_income - real_estate.avg_median_listing_price as diff from income JOIN real_estate ON income.zipcode = real_estate.zipcode ORDER BY diff LIMIT 10;
+
+-- Preregression analysis 3 - states that have the biggest difference in income after tax and median listing price
+WITH income AS (
+	
+	SELECT zipcode, state, (sum(total_income)-sum(state_and_local) - sum(real_estate))*1000/sum(n1) as post_tax_income from income_clean GROUP BY zipcode, state
+),
+
+real_estate AS (
+
+	SELECT zipcode, avg(median_listing_price) as avg_median_listing_price from real_estate_clean GROUP BY zipcode
+),
+
+by_zipcode AS (
+
+	SELECT income.zipcode, income.state, income.post_tax_income, real_estate.avg_median_listing_price, income.post_tax_income - real_estate.avg_median_listing_price as diff from income JOIN real_estate ON income.zipcode = real_estate.zipcode ORDER BY diff
+)
+
+SELECT state, avg(post_tax_income), avg(avg_median_listing_price), avg(diff) from by_zipcode GROUP BY state ORDER BY avg(diff) LIMIT 10;
+
+
+-- Preregression Analysis 4 - how many years would it take you to buy a median home in that state, assuming no expenses?
+WITH income AS (
+	
+	SELECT zipcode, state, (sum(total_income)-sum(state_and_local) - sum(real_estate))*1000/sum(n1) as post_tax_income from income_clean GROUP BY zipcode, state
+),
+
+real_estate AS (
+
+	SELECT zipcode, avg(median_listing_price) as avg_median_listing_price from real_estate_clean GROUP BY zipcode
+),
+
+by_zipcode AS (
+
+	SELECT income.zipcode, income.state, income.post_tax_income, real_estate.avg_median_listing_price, income.post_tax_income - real_estate.avg_median_listing_price as diff from income JOIN real_estate ON income.zipcode = real_estate.zipcode ORDER BY diff
+),
+
+by_state AS (
+
+	SELECT state, avg(post_tax_income) as a, avg(avg_median_listing_price) as m, avg(diff) as diff from by_zipcode GROUP BY state ORDER BY diff
+
+)
+
+SELECT state, a, m, diff, m/a as years from by_state ORDER by years desc LIMIT 10;
+
+
+-- Preregression Analysis 5 - how many years would it take you to buy a median home in that state, assuming no expenses?
+WITH income AS (
+	
+	SELECT zipcode, state, (sum(total_income)-sum(state_and_local) - sum(real_estate))*1000/sum(n1) as post_tax_income from income_clean GROUP BY zipcode, state
+),
+
+real_estate AS (
+
+	SELECT zipcode, avg(median_listing_price) as avg_median_listing_price from real_estate_clean GROUP BY zipcode
+),
+
+by_zipcode AS (
+
+	SELECT income.zipcode, income.state, income.post_tax_income, real_estate.avg_median_listing_price, income.post_tax_income - real_estate.avg_median_listing_price as diff from income JOIN real_estate ON income.zipcode = real_estate.zipcode ORDER BY diff
+),
+
+by_state AS (
+
+	SELECT state, avg(post_tax_income) as a, avg(avg_median_listing_price) as m, avg(diff) as diff from by_zipcode GROUP BY state ORDER BY diff
+
+)
+
+SELECT state, a, m, diff, m/a as years from by_state ORDER by years LIMIT 10;
+
+
+
